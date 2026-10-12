@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
+  -v migration_password="$MIGRATION_PASSWORD" -v app_password="$APP_DB_PASSWORD" <<'SQL'
+CREATE ROLE qayd_migrator LOGIN PASSWORD :'migration_password' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+CREATE ROLE qayd_app LOGIN PASSWORD :'app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+GRANT USAGE, CREATE ON SCHEMA public TO qayd_migrator;
+GRANT USAGE ON SCHEMA public TO qayd_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE qayd_migrator IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO qayd_app;
+SQL

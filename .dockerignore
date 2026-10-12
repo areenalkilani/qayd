@@ -1,0 +1,13 @@
+**/node_modules
+**/dist
+.git
+.local-test
+.local-dev
+.env
+**/.env
+**/.env*
+**/storage
+backups
+*.log
+.codex
+.agents

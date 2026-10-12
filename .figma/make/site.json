@@ -1,0 +1,12 @@
+{
+  "title": "قيد | Qayd",
+  "language": "ar",
+  "description": "Manage legal cases, clients, and finances seamlessly with this comprehensive Arabic law firm management platform designed for independent law offices in Palestine.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

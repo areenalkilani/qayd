@@ -1,0 +1,19 @@
+import { BadRequestException, Body, Controller, Get, Inject, Post, Query, Req } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
+import { Prisma } from '@prisma/client';
+import { z } from 'zod';
+import { Db } from './db';
+import { requireOffice } from './policy';
+import { AuthRequest, OfficePermission } from './security';
+import { pageSchema, parse } from './validation';
+const id = z.string().uuid(); const date = z.string().datetime({ offset: true }).transform(v => new Date(v));
+const entry = z.object({ clientId: id.nullable().default(null), caseId: id.nullable().default(null), kind: z.enum(['CLIENT_FEE','CLIENT_PAYMENT','PAYMENT_PROMISE','OFFICE_EXPENSE','SALARY','SUPPLY','MAINTENANCE']), amount: z.string().regex(/^\d{1,10}(\.\d{1,2})?$/), currency: z.string().trim().length(3).default('ILS'), method: z.string().trim().max(50).default(''), reference: z.string().trim().max(100).default(''), description: z.string().trim().max(2000).default(''), dueAt: date.nullable().default(null), paidAt: date.nullable().default(null) }).strict();
+@ApiTags('Office finance') @Controller('finance') export class FinanceController {
+  constructor(@Inject(Db) private db: Db) {}
+  @OfficePermission('finance.read') @Get()
+  async list(@Req() req: AuthRequest, @Query() query: unknown) { const v = parse(pageSchema.extend({ from: date.optional(), to: date.optional(), kind: z.enum(['CLIENT_FEE','CLIENT_PAYMENT','PAYMENT_PROMISE','OFFICE_EXPENSE','SALARY','SUPPLY','MAINTENANCE']).optional() }), query); const officeId = requireOffice(req.user); const where: Prisma.FinanceEntryWhereInput = { officeId, ...(v.kind ? { kind: v.kind } : {}), ...(v.from || v.to ? { createdAt: { ...(v.from ? { gte: v.from } : {}), ...(v.to ? { lte: v.to } : {}) } } : {}) }; const [items,total] = await this.db.$transaction([this.db.financeEntry.findMany({ where, include: { client: { select: { name: true } }, case: { select: { internalNumber: true } } }, orderBy: { createdAt: 'desc' }, skip: (v.page-1)*20, take:20 }), this.db.financeEntry.count({where})]); return {items,total,page:v.page,pageSize:20}; }
+  @OfficePermission('finance.write') @Post()
+  async create(@Req() req: AuthRequest, @Body() body: unknown) { const v = parse(entry, body); const officeId = requireOffice(req.user); if ((v.kind === 'CLIENT_FEE' || v.kind === 'CLIENT_PAYMENT' || v.kind === 'PAYMENT_PROMISE') && !v.clientId) throw new BadRequestException('Select a client'); if (v.clientId && !await this.db.client.findFirst({where:{id:v.clientId,officeId}})) throw new BadRequestException('Select an office client'); if (v.caseId && !await this.db.legalCase.findFirst({where:{id:v.caseId,officeId}})) throw new BadRequestException('Select an office case'); const status = v.kind === 'PAYMENT_PROMISE' ? 'PROMISED' : 'POSTED'; return this.db.$transaction(async tx => { const item = await tx.financeEntry.create({data:{...v,amount:new Prisma.Decimal(v.amount),officeId,status,recordedBy:req.user.id,paidAt:v.kind === 'CLIENT_PAYMENT' ? (v.paidAt || new Date()) : null}}); await tx.audit.create({data:{officeId,actorId:req.user.id,action:'FINANCE_ENTRY_CREATED',targetId:item.id,metadata:{kind:v.kind,amount:v.amount}}}); return item; }); }
+  @OfficePermission('finance.read') @Get('summary')
+  async summary(@Req() req: AuthRequest) { const officeId=requireOffice(req.user); const rows=await this.db.financeEntry.groupBy({by:['kind','status'],where:{officeId},_sum:{amount:true}}); const amount=(kind:string,status='POSTED')=>rows.filter(x=>x.kind===kind&&x.status===status).reduce((n,x)=>n+Number(x._sum.amount||0),0); const fees=amount('CLIENT_FEE'), payments=amount('CLIENT_PAYMENT'), expenses=['OFFICE_EXPENSE','SALARY','SUPPLY','MAINTENANCE'].reduce((n,k)=>n+amount(k),0); return { fees, payments, outstanding: Math.max(0,fees-payments), promised: amount('PAYMENT_PROMISE','PROMISED'), expenses, net: payments-expenses }; }
+}

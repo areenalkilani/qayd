@@ -1,0 +1,43 @@
+{
+  "name": "qayd-api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "generate": "prisma generate",
+    "migrate": "prisma migrate deploy",
+    "bootstrap": "tsx src/bootstrap.ts",
+    "test": "node --test test/policy.test.cjs",
+    "test:integration": "node --test test/integration.cjs",
+    "migration:initial": "prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script --output prisma/migrations/202610100001_identity/migration.sql"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.1.0",
+    "@nestjs/core": "^11.1.0",
+    "@nestjs/platform-express": "^11.1.0",
+    "@nestjs/swagger": "^11.2.0",
+    "@prisma/client": "6.19.0",
+    "argon2": "^0.44.0",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^16.6.1",
+    "express-rate-limit": "^8.1.0",
+    "fflate": "^0.8.3",
+    "helmet": "^8.1.0",
+    "nodemailer": "^7.0.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.9",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "@types/nodemailer": "^7.0.0",
+    "playwright-core": "^1.64.0",
+    "prisma": "6.19.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.7.0"
+  }
+}

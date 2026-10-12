@@ -1,0 +1,439 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+enum Role {
+  SUPER_ADMIN
+  OWNER
+  LAWYER
+  ADMINISTRATIVE
+}
+enum OfficeStatus {
+  PENDING_APPROVAL
+  MORE_INFO
+  REJECTED
+  APPROVED
+  SUSPENDED
+}
+enum UserStatus {
+  INVITED
+  ACTIVE
+  DISABLED
+}
+enum TokenKind {
+  RESET
+  INVITE
+  VERIFY_EMAIL
+}
+model PlatformContact {
+  id Int @id
+  data Json
+}
+model Office {
+  id String @id @default(uuid()) @db.Uuid
+  name String
+  status OfficeStatus @default(PENDING_APPROVAL)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  users User[]
+  registration Registration?
+  trial Trial?
+  subscriptions Subscription[]
+  audits Audit[]
+  clients Client[]
+  courts Court[]
+  cases LegalCase[]
+  hearings Hearing[]
+  procedures LegalProcedure[]
+  tasks WorkTask[]
+  attachments CaseAttachment[]
+  platformPayments PlatformPayment[]
+  financeEntries FinanceEntry[]
+  messages OfficeMessage[]
+}
+model User {
+  id String @id @default(uuid()) @db.Uuid
+  officeId String? @db.Uuid
+  office Office? @relation(fields: [officeId], references: [id], onDelete: Restrict)
+  email String @unique
+  fullName String
+  phone String
+  phoneVerifiedAt DateTime? @db.Timestamptz(3)
+  emailVerifiedAt DateTime? @db.Timestamptz(3)
+  passwordHash String?
+  role Role
+  permissions String[] @default([])
+  status UserStatus @default(ACTIVE)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  sessions Session[]
+  tokens ActionToken[]
+  notificationReads NotificationRead[]
+  assignedCases LegalCase[] @relation("AssignedLawyer")
+  createdCases LegalCase[] @relation("CaseCreator")
+  hearings Hearing[]
+  procedures LegalProcedure[]
+  assignedTasks WorkTask[] @relation("TaskAssignee")
+  createdTasks WorkTask[] @relation("TaskCreator")
+  sentMessages OfficeMessage[] @relation("MessageSender")
+  messageRecipients MessageRecipient[]
+  @@unique([officeId, id])
+  @@index([officeId, status])
+}
+model Session {
+  id String @id @default(uuid()) @db.Uuid
+  tokenHash String @unique
+  userId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@index([userId])
+  @@index([expiresAt])
+}
+model NotificationRead {
+  userId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key String
+  readAt DateTime @default(now()) @db.Timestamptz(3)
+  @@id([userId, key])
+}
+model ActionToken {
+  id String @id @default(uuid()) @db.Uuid
+  tokenHash String @unique
+  userId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind TokenKind
+  expiresAt DateTime @db.Timestamptz(3)
+  @@index([userId, kind])
+}
+model Registration {
+  id String @id @default(uuid()) @db.Uuid
+  officeId String @unique @db.Uuid
+  office Office @relation(fields: [officeId], references: [id], onDelete: Restrict)
+  reviewNote String?
+  reviewedBy String? @db.Uuid
+  reviewedAt DateTime? @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+}
+model Trial {
+  id String @id @default(uuid()) @db.Uuid
+  officeId String @unique @db.Uuid
+  office Office @relation(fields: [officeId], references: [id], onDelete: Restrict)
+  startsAt DateTime @db.Timestamptz(3)
+  expiresAt DateTime @db.Timestamptz(3)
+}
+model Subscription {
+  id String @id @default(uuid()) @db.Uuid
+  officeId String @db.Uuid
+  office Office @relation(fields: [officeId], references: [id], onDelete: Restrict)
+  startsAt DateTime @db.Timestamptz(3)
+  expiresAt DateTime @db.Timestamptz(3)
+  approvedBy String @db.Uuid
+  reference String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  payment PlatformPayment?
+  @@unique([officeId, reference])
+  @@index([officeId, expiresAt])
+}
+model Audit {
+  id String @id @default(uuid()) @db.Uuid
+  officeId String? @db.Uuid
+  office Office? @relation(fields: [officeId], references: [id], onDelete: Restrict)
+  actorId String? @db.Uuid
+  action String
+  targetId String
+  metadata Json @default("{}")
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@index([officeId, createdAt])
+}
+
+model PlatformPayment {
+  id String @id @db.Uuid
+  officeId String @db.Uuid
+  office Office @relation(fields: [officeId], references: [id], onDelete: Restrict)
+  subscriptionId String @unique @db.Uuid
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
+  amount Decimal @db.Decimal(12, 2)
+  currency String
+  method String
+  reference String
+  cardLast4 String @default("")
+  recordedBy String @db.Uuid
+  paidAt DateTime @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@unique([officeId, reference])
+  @@index([paidAt])
+}
+model FileDeletion {
+  storageKey String @id
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+}
+
+enum CaseStatus {
+  ACTIVE
+  CLOSED
+  ARCHIVED
+}
+enum HearingStatus {
+  SCHEDULED
+  POSTPONED
+  HELD_ACTIVE
+  HELD_COMPLETED
+}
+enum ProcedureStatus {
+  OPEN
+  DONE
+  CANCELLED
+}
+model Client {
+  id String @id @default(uuid()) @db.Uuid
+  officeId String @db.Uuid
+  office Office @relation(fields: [officeId], references: [id], onDelete: Restrict)
+  name String
+  phone String
+  email String?
+  address String @default("")
+  notes String @default("")
+  archivedAt DateTime? @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  cases LegalCase[]
+  financeEntries FinanceEntry[]
+  @@unique([officeId, id])
+  @@index([officeId, name])
+}
+model Court {
+  id String @id @default(uuid()) @db.Uuid
+  officeId String @db.Uuid
+  office Office @relation(fields: [officeId], references: [id], onDelete: Restrict)
+  name String
+  normalizedName String
+  address String @default("")
+  active Boolean @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  cases LegalCase[]
+  hearings Hearing[]
+  @@unique([officeId, id])
+  @@unique([officeId, normalizedName])
+}
+model LegalCase {
+  id String @id @default(uuid()) @db.Uuid
+  officeId String @db.Uuid
+  office Office @relation(fields: [officeId], references: [id], onDelete: Restrict)
+  internalNumber String
+  clientId String @db.Uuid
+  client Client @relation(fields: [officeId, clientId], references: [officeId, id], onDelete: Restrict)
+  courtId String @db.Uuid
+  court Court @relation(fields: [officeId, courtId], references: [officeId, id], onDelete: Restrict)
+  courtNumber String
+  type String
+  receivedAt DateTime @db.Timestamptz(3)
+  lawyerId String? @db.Uuid
+  lawyer User? @relation("AssignedLawyer", fields: [officeId, lawyerId], references: [officeId, id], onDelete: Restrict)
+  creatorId String @db.Uuid
+  creator User @relation("CaseCreator", fields: [officeId, creatorId], references: [officeId, id], onDelete: Restrict)
+  status CaseStatus @default(ACTIVE)
+  notes String @default("")
+  version Int @default(1)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  assignments AssignmentHistory[]
+  hearings Hearing[]
+  procedures LegalProcedure[]
+  tasks WorkTask[]
+  attachments CaseAttachment[]
+  financeEntries FinanceEntry[]
+  @@unique([officeId, id])
+  @@unique([officeId, internalNumber])
+  @@index([officeId, status, createdAt])
+}
+model AssignmentHistory {
+  id String @id @default(uuid()) @db.Uuid
+  officeId String @db.Uuid
+  caseId String @db.Uuid
+  case LegalCase @relation(fields: [officeId, caseId], references: [officeId, id], onDelete: Restrict)
+  previousLawyerId String? @db.Uuid
+  newLawyerId String? @db.Uuid
+  actorId String @db.Uuid
+  reason String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@index([officeId, caseId, createdAt])
+}
+model Hearing {
+  id String @id @default(uuid()) @db.Uuid
+  officeId String @db.Uuid
+  office Office @relation(fields: [officeId], references: [id], onDelete: Restrict)
+  caseId String @db.Uuid
+  case LegalCase @relation(fields: [officeId, caseId], references: [officeId, id], onDelete: Restrict)
+  courtId String @db.Uuid
+  court Court @relation(fields: [officeId, courtId], references: [officeId, id], onDelete: Restrict)
+  lawyerId String @db.Uuid
+  lawyer User @relation(fields: [officeId, lawyerId], references: [officeId, id], onDelete: Restrict)
+  scheduledAt DateTime? @db.Timestamptz(3)
+  status HearingStatus @default(SCHEDULED)
+  outcome String @default("")
+  judicialDecisions String @default("")
+  notes String @default("")
+  version Int @default(1)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  reschedules HearingReschedule[]
+  @@unique([officeId, id])
+  @@index([officeId, lawyerId, scheduledAt])
+  @@index([officeId, status])
+}
+model HearingReschedule {
+  id String @id @default(uuid()) @db.Uuid
+  officeId String @db.Uuid
+  hearingId String @db.Uuid
+  hearing Hearing @relation(fields: [officeId, hearingId], references: [officeId, id], onDelete: Restrict)
+  previousAt DateTime? @db.Timestamptz(3)
+  nextAt DateTime? @db.Timestamptz(3)
+  reason String
+  actorId String @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@index([officeId, hearingId])
+}
+model LegalProcedure {
+  id String @id @default(uuid()) @db.Uuid
+  officeId String @db.Uuid
+  office Office @relation(fields: [officeId], references: [id], onDelete: Restrict)
+  caseId String @db.Uuid
+  case LegalCase @relation(fields: [officeId, caseId], references: [officeId, id], onDelete: Restrict)
+  title String
+  description String @default("")
+  assignedId String @db.Uuid
+  assigned User @relation(fields: [officeId, assignedId], references: [officeId, id], onDelete: Restrict)
+  dueAt DateTime @db.Timestamptz(3)
+  reminderAt DateTime? @db.Timestamptz(3)
+  priority String @default("NORMAL")
+  status ProcedureStatus @default(OPEN)
+  completedAt DateTime? @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  version Int @default(1)
+  @@index([officeId, status, dueAt])
+}
+
+enum TaskStatus {
+  OPEN
+  DONE
+  CANCELLED
+}
+enum FinanceKind {
+  CLIENT_FEE
+  CLIENT_PAYMENT
+  PAYMENT_PROMISE
+  OFFICE_EXPENSE
+  SALARY
+  SUPPLY
+  MAINTENANCE
+}
+enum FinanceStatus {
+  POSTED
+  PROMISED
+  CANCELLED
+}
+model FinanceEntry {
+  id String @id @default(uuid()) @db.Uuid
+  officeId String @db.Uuid
+  office Office @relation(fields: [officeId], references: [id], onDelete: Restrict)
+  clientId String? @db.Uuid
+  client Client? @relation(fields: [officeId, clientId], references: [officeId, id], onDelete: Restrict)
+  caseId String? @db.Uuid
+  case LegalCase? @relation(fields: [officeId, caseId], references: [officeId, id], onDelete: Restrict)
+  kind FinanceKind
+  status FinanceStatus @default(POSTED)
+  amount Decimal @db.Decimal(12,2)
+  currency String @default("ILS")
+  method String @default("")
+  reference String @default("")
+  description String @default("")
+  dueAt DateTime? @db.Timestamptz(3)
+  paidAt DateTime? @db.Timestamptz(3)
+  recordedBy String @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@unique([officeId, id])
+  @@index([officeId, kind, createdAt])
+  @@index([officeId, clientId, status])
+}
+model OfficeMessage {
+  id String @id @default(uuid()) @db.Uuid
+  officeId String @db.Uuid
+  office Office @relation(fields: [officeId], references: [id], onDelete: Restrict)
+  senderId String @db.Uuid
+  sender User @relation("MessageSender", fields: [senderId], references: [id], onDelete: Restrict)
+  subject String @default("")
+  body String
+  isAnnouncement Boolean @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  recipients MessageRecipient[]
+  @@unique([officeId, id])
+  @@index([officeId, createdAt])
+}
+model MessageRecipient {
+  messageId String @db.Uuid
+  userId String @db.Uuid
+  message OfficeMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  readAt DateTime? @db.Timestamptz(3)
+  @@id([messageId, userId])
+  @@index([userId, readAt])
+}
+model WorkTask {
+  id String @id @default(uuid()) @db.Uuid
+  officeId String @db.Uuid
+  office Office @relation(fields: [officeId], references: [id], onDelete: Restrict)
+  caseId String? @db.Uuid
+  case LegalCase? @relation(fields: [officeId, caseId], references: [officeId, id], onDelete: Restrict)
+  title String
+  description String @default("")
+  assignedId String @db.Uuid
+  assigned User @relation("TaskAssignee", fields: [officeId, assignedId], references: [officeId, id], onDelete: Restrict)
+  creatorId String @db.Uuid
+  creator User @relation("TaskCreator", fields: [officeId, creatorId], references: [officeId, id], onDelete: Restrict)
+  dueAt DateTime @db.Timestamptz(3)
+  priority String @default("NORMAL")
+  status TaskStatus @default(OPEN)
+  completedAt DateTime? @db.Timestamptz(3)
+  completionNote String @default("")
+  version Int @default(1)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  history TaskHistory[]
+  @@unique([officeId, id])
+  @@index([officeId, status, dueAt])
+  @@index([officeId, assignedId, status])
+}
+model TaskHistory {
+  id String @id @default(uuid()) @db.Uuid
+  officeId String @db.Uuid
+  taskId String @db.Uuid
+  task WorkTask @relation(fields: [officeId, taskId], references: [officeId, id], onDelete: Restrict)
+  actorId String @db.Uuid
+  action String
+  note String @default("")
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@index([officeId, taskId, createdAt])
+}
+
+model CaseAttachment {
+  id String @id @default(uuid()) @db.Uuid
+  officeId String @db.Uuid
+  office Office @relation(fields: [officeId], references: [id], onDelete: Restrict)
+  caseId String @db.Uuid
+  case LegalCase @relation(fields: [officeId, caseId], references: [officeId, id], onDelete: Restrict)
+  originalName String
+  storageKey String @unique
+  contentType String
+  size Int
+  sha256 String
+  uploadedBy String @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@unique([officeId, id])
+  @@index([officeId, caseId, createdAt])
+}
